@@ -160,7 +160,7 @@ All device behaviors can be customized through Home Assistant automations withou
 
 ### Calm Blue Status Wave
 
-The **Status wave** switch is enabled by default. It runs a slow blue wave
+The **Status wave** switch is enabled by default. It runs a soft aqua-blue wave
 around the panel and reserves one dark notch for each gang. A notch turns green
 when the Home Assistant entity mapped to that gang is on. These indicators
 follow the virtual lights or switches controlled by the buttons, rather than

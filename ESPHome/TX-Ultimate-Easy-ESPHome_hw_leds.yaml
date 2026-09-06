@@ -139,9 +139,9 @@ light:
     effects:
       - addressable_lambda:
           name: "${STATUS_WAVE_EFFECT_NAME}"
-          update_interval: 80ms
+          update_interval: 40ms
           lambda: |-
-            // A low, slow blue wave travels around the perimeter. The existing
+            // A soft, slow aqua wave travels around the perimeter. The existing
             // relay-indicator geometry is reused for one status notch per gang.
             static uint32_t effect_started_at = 0;
             if (initial_run) {
@@ -198,21 +198,25 @@ light:
               return -1;
             };
 
-            const float breathing = 0.86f + 0.14f * sinf(elapsed * 0.50f);
+            // Keep both the spatial and breathing contrast deliberately low.
+            // This makes adjacent pixels blend visually instead of appearing
+            // as separate bright/dark steps on the short 28/32-pixel strip.
+            const float breathing = 0.93f + 0.07f * sinf(elapsed * 0.38f);
             for (size_t led = 0; led < it.size(); led++) {
               const int8_t gang = gang_for_led(led);
               if (gang >= 0) {
-                // An inactive gang is a dark break in the wave; its HA entity
-                // turning on replaces that break with a calm green marker.
-                it[led] = gang_on[gang] ? Color(0, 180, 24) : Color(0, 0, 3);
+                // Keep inactive notches dark aqua instead of black so their
+                // edges blend into the wave. Active notches remain soft green.
+                it[led] = gang_on[gang] ? Color(8, 165, 55) : Color(0, 20, 24);
                 continue;
               }
 
               const float position = static_cast<float>(led) / static_cast<float>(it.size());
-              const float wave = 0.5f + 0.5f * sinf(position * two_pi - elapsed * 0.55f);
-              const uint8_t green = static_cast<uint8_t>((8.0f + 18.0f * wave) * breathing);
-              const uint8_t blue = static_cast<uint8_t>((55.0f + 95.0f * wave) * breathing);
-              it[led] = Color(0, green, blue);
+              const float wave = 0.5f + 0.5f * sinf(position * two_pi - elapsed * 0.38f);
+              const uint8_t red = static_cast<uint8_t>((4.0f + 6.0f * wave) * breathing);
+              const uint8_t green = static_cast<uint8_t>((88.0f + 38.0f * wave) * breathing);
+              const uint8_t blue = static_cast<uint8_t>((100.0f + 38.0f * wave) * breathing);
+              it[led] = Color(red, green, blue);
             }
       - addressable_rainbow:
           name: "Rainbow"
