@@ -30,15 +30,9 @@ substitutions:
   LIGHT_FULL_RESTORE_MODE: RESTORE_DEFAULT_OFF
   LIGHT_SIDES_RESTORE_MODE: RESTORE_DEFAULT_OFF
 
-  # Home Assistant entities represented by each gang's green status notch.
-  # Override these with the light/switch entity IDs controlled by each button.
-  gang_1_status_entity: input_boolean.tx_ultimate_easy_gang_1_status
-  gang_2_status_entity: input_boolean.tx_ultimate_easy_gang_2_status
-  gang_3_status_entity: input_boolean.tx_ultimate_easy_gang_3_status
-  gang_4_status_entity: input_boolean.tx_ultimate_easy_gang_4_status
-
-  STATUS_WAVE_EFFECT_NAME: "Calm Blue Status Wave"
+  STATUS_WAVE_EFFECT_NAME: "Calm Aqua Wave"
   STATUS_WAVE_DEFAULT_BRIGHTNESS: "35"
+  STATUS_WAVE_PRESS_PULSE_DURATION: "550"  # Whole-strip press pulse, in ms
 
   LIGHT_LED_COUNT: ${28 if IS_EU_MODEL else 32}
   LIGHT_MAX_ADDR: ${27 if IS_EU_MODEL else 31}
@@ -49,28 +43,15 @@ esphome:
   build_flags:
     - -D TX_ULTIMATE_EASY_HW_LEDS
 
-binary_sensor:
-  # Hidden local mirrors of the Home Assistant entities controlled by the
-  # buttons. A missing/default placeholder remains OFF until it is overridden.
-  - id: bs_gang_1_status
-    platform: homeassistant
-    entity_id: ${gang_1_status_entity}
-    internal: true
-
-  - id: bs_gang_2_status
-    platform: homeassistant
-    entity_id: ${gang_2_status_entity}
-    internal: true
-
-  - id: bs_gang_3_status
-    platform: homeassistant
-    entity_id: ${gang_3_status_entity}
-    internal: true
-
-  - id: bs_gang_4_status
-    platform: homeassistant
-    entity_id: ${gang_4_status_entity}
-    internal: true
+globals:
+  - id: status_wave_press_active
+    type: bool
+    restore_value: false
+    initial_value: 'false'
+  - id: status_wave_press_started_at
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
 
 .light_partition_sides: &light_partition_sides
   platform: partition
@@ -141,8 +122,7 @@ light:
           name: "${STATUS_WAVE_EFFECT_NAME}"
           update_interval: 40ms
           lambda: |-
-            // A soft, slow aqua wave travels around the perimeter. The existing
-            // relay-indicator geometry is reused for one status notch per gang.
+            // A soft, slow aqua wave travels around the perimeter.
             static uint32_t effect_started_at = 0;
             if (initial_run) {
               effect_started_at = millis();
@@ -154,63 +134,33 @@ light:
             if (sw_night_mode->state) return;
             #endif
 
-            const float elapsed = static_cast<float>(millis() - effect_started_at) / 1000.0f;
+            const uint32_t now = millis();
+            const float elapsed = static_cast<float>(now - effect_started_at) / 1000.0f;
             const float two_pi = 6.28318530718f;
-            const bool gang_on[4] = {
-              bs_gang_1_status->has_state() && bs_gang_1_status->state,
-              bs_gang_2_status->has_state() && bs_gang_2_status->state,
-              bs_gang_3_status->has_state() && bs_gang_3_status->state,
-              bs_gang_4_status->has_state() && bs_gang_4_status->state
-            };
 
-            auto gang_for_led = [](size_t led) -> int8_t {
-              #if TX_ULTIMATE_EASY_IS_EU_MODEL
-              // EU notches sit along the bottom edge, matching the physical
-              // position of each capacitive button.
-              static const uint8_t notch[4][4] = {
-                {9, 0, 0, 0},
-                {11, 7, 0, 0},
-                {12, 9, 6, 0},
-                {12, 10, 8, 6}
-              };
-              for (uint8_t gang = 0; gang < TX_ULTIMATE_EASY_GANG_COUNT; gang++) {
-                if (led == notch[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang]) return gang;
+            // A press temporarily replaces the spatial wave with one uniform
+            // blue pulse. The wave clock keeps advancing and resumes in-place.
+            if (id(status_wave_press_active)) {
+              const uint32_t press_started_at = id(status_wave_press_started_at);
+              const uint32_t press_elapsed = now - press_started_at;
+              if (press_elapsed < ${STATUS_WAVE_PRESS_PULSE_DURATION}) {
+                const float progress = static_cast<float>(press_elapsed) /
+                                       static_cast<float>(${STATUS_WAVE_PRESS_PULSE_DURATION});
+                const float pulse = 0.68f + 0.32f * sinf(progress * 3.14159265359f);
+                const uint8_t red = static_cast<uint8_t>(10.0f * pulse);
+                const uint8_t green = static_cast<uint8_t>(70.0f * pulse);
+                const uint8_t blue = static_cast<uint8_t>(230.0f * pulse);
+                it.all() = Color(red, green, blue);
+                return;
               }
-              #else
-              // US notches occupy the existing left-edge gang segments.
-              static const uint8_t notch_start[4][4] = {
-                {15, 0, 0, 0},
-                {20, 15, 0, 0},
-                {22, 19, 16, 0},
-                {23, 21, 17, 15}
-              };
-              static const uint8_t notch_end[4][4] = {
-                {24, 0, 0, 0},
-                {24, 19, 0, 0},
-                {23, 20, 17, 0},
-                {24, 22, 18, 16}
-              };
-              for (uint8_t gang = 0; gang < TX_ULTIMATE_EASY_GANG_COUNT; gang++) {
-                if (led >= notch_start[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang] &&
-                    led <= notch_end[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang]) return gang;
-              }
-              #endif
-              return -1;
-            };
+              id(status_wave_press_active) = false;
+            }
 
             // Keep both the spatial and breathing contrast deliberately low.
             // This makes adjacent pixels blend visually instead of appearing
             // as separate bright/dark steps on the short 28/32-pixel strip.
             const float breathing = 0.93f + 0.07f * sinf(elapsed * 0.38f);
             for (size_t led = 0; led < it.size(); led++) {
-              const int8_t gang = gang_for_led(led);
-              if (gang >= 0) {
-                // Keep inactive notches dark aqua instead of black so their
-                // edges blend into the wave. Active notches remain soft green.
-                it[led] = gang_on[gang] ? Color(8, 165, 55) : Color(0, 20, 24);
-                continue;
-              }
-
               const float position = static_cast<float>(led) / static_cast<float>(it.size());
               const float wave = 0.5f + 0.5f * sinf(position * two_pi - elapsed * 0.38f);
               const uint8_t red = static_cast<uint8_t>((4.0f + 6.0f * wave) * breathing);
@@ -310,7 +260,7 @@ light:
 
 switch:
   - id: sw_status_wave_enabled
-    name: Status wave
+    name: Calm wave
     platform: template
     icon: mdi:waves
     entity_category: config
@@ -332,6 +282,15 @@ switch:
           #endif
 
 script:
+  - id: !extend touch_on_press
+    then:
+      - lambda: |-
+          // Restrict feedback to mapped button regions. Repeated presses restart
+          // the pulse cleanly without restarting the underlying wave effect.
+          if (!sw_status_wave_enabled->state || button < 1 || button > ${gang_count}) return;
+          id(status_wave_press_started_at) = millis();
+          id(status_wave_press_active) = true;
+
   - id: !extend boot_done
     then:
       # The restored switch state is available by boot_done. Starting the effect

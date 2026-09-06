@@ -611,10 +611,10 @@ script:
           }
           #endif  // TX_ULTIMATE_EASY_NIGHT_MODE
 
-          // The status-wave effect owns every physical pixel and paints its
-          // green notches from imported HA entity states, not relay states.
+          // The calm-wave effect owns every physical pixel. Do not let physical
+          // relay indicators interrupt it.
           if (sw_status_wave_enabled->state) {
-            ESP_LOGV("${TAG_HW_RELAYS}", "Status wave active - skipping relay LED update");
+            ESP_LOGV("${TAG_HW_RELAYS}", "Calm wave active - skipping relay LED update");
             return;
           }
 
