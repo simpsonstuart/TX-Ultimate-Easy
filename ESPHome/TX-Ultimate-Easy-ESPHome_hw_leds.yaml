@@ -30,6 +30,16 @@ substitutions:
   LIGHT_FULL_RESTORE_MODE: RESTORE_DEFAULT_OFF
   LIGHT_SIDES_RESTORE_MODE: RESTORE_DEFAULT_OFF
 
+  # Home Assistant entities represented by each gang's green status notch.
+  # Override these with the light/switch entity IDs controlled by each button.
+  gang_1_status_entity: input_boolean.tx_ultimate_easy_gang_1_status
+  gang_2_status_entity: input_boolean.tx_ultimate_easy_gang_2_status
+  gang_3_status_entity: input_boolean.tx_ultimate_easy_gang_3_status
+  gang_4_status_entity: input_boolean.tx_ultimate_easy_gang_4_status
+
+  STATUS_WAVE_EFFECT_NAME: "Calm Blue Status Wave"
+  STATUS_WAVE_DEFAULT_BRIGHTNESS: "35"
+
   LIGHT_LED_COUNT: ${28 if IS_EU_MODEL else 32}
   LIGHT_MAX_ADDR: ${27 if IS_EU_MODEL else 31}
 
@@ -38,6 +48,29 @@ substitutions:
 esphome:
   build_flags:
     - -D TX_ULTIMATE_EASY_HW_LEDS
+
+binary_sensor:
+  # Hidden local mirrors of the Home Assistant entities controlled by the
+  # buttons. A missing/default placeholder remains OFF until it is overridden.
+  - id: bs_gang_1_status
+    platform: homeassistant
+    entity_id: ${gang_1_status_entity}
+    internal: true
+
+  - id: bs_gang_2_status
+    platform: homeassistant
+    entity_id: ${gang_2_status_entity}
+    internal: true
+
+  - id: bs_gang_3_status
+    platform: homeassistant
+    entity_id: ${gang_3_status_entity}
+    internal: true
+
+  - id: bs_gang_4_status
+    platform: homeassistant
+    entity_id: ${gang_4_status_entity}
+    internal: true
 
 .light_partition_sides: &light_partition_sides
   platform: partition
@@ -104,6 +137,83 @@ light:
     internal: false
     restore_mode: ${LIGHT_SIDES_RESTORE_MODE}
     effects:
+      - addressable_lambda:
+          name: "${STATUS_WAVE_EFFECT_NAME}"
+          update_interval: 80ms
+          lambda: |-
+            // A low, slow blue wave travels around the perimeter. The existing
+            // relay-indicator geometry is reused for one status notch per gang.
+            static uint32_t effect_started_at = 0;
+            if (initial_run) {
+              effect_started_at = millis();
+            }
+
+            // Night Mode uses another full-strip partition. Pause this writer
+            // so its fixed color always wins, then resume on the next frame.
+            #ifdef TX_ULTIMATE_EASY_NIGHT_MODE
+            if (sw_night_mode->state) return;
+            #endif
+
+            const float elapsed = static_cast<float>(millis() - effect_started_at) / 1000.0f;
+            const float two_pi = 6.28318530718f;
+            const bool gang_on[4] = {
+              bs_gang_1_status->has_state() && bs_gang_1_status->state,
+              bs_gang_2_status->has_state() && bs_gang_2_status->state,
+              bs_gang_3_status->has_state() && bs_gang_3_status->state,
+              bs_gang_4_status->has_state() && bs_gang_4_status->state
+            };
+
+            auto gang_for_led = [](size_t led) -> int8_t {
+              #if TX_ULTIMATE_EASY_IS_EU_MODEL
+              // EU notches sit along the bottom edge, matching the physical
+              // position of each capacitive button.
+              static const uint8_t notch[4][4] = {
+                {9, 0, 0, 0},
+                {11, 7, 0, 0},
+                {12, 9, 6, 0},
+                {12, 10, 8, 6}
+              };
+              for (uint8_t gang = 0; gang < TX_ULTIMATE_EASY_GANG_COUNT; gang++) {
+                if (led == notch[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang]) return gang;
+              }
+              #else
+              // US notches occupy the existing left-edge gang segments.
+              static const uint8_t notch_start[4][4] = {
+                {15, 0, 0, 0},
+                {20, 15, 0, 0},
+                {22, 19, 16, 0},
+                {23, 21, 17, 15}
+              };
+              static const uint8_t notch_end[4][4] = {
+                {24, 0, 0, 0},
+                {24, 19, 0, 0},
+                {23, 20, 17, 0},
+                {24, 22, 18, 16}
+              };
+              for (uint8_t gang = 0; gang < TX_ULTIMATE_EASY_GANG_COUNT; gang++) {
+                if (led >= notch_start[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang] &&
+                    led <= notch_end[TX_ULTIMATE_EASY_GANG_COUNT - 1][gang]) return gang;
+              }
+              #endif
+              return -1;
+            };
+
+            const float breathing = 0.86f + 0.14f * sinf(elapsed * 0.50f);
+            for (size_t led = 0; led < it.size(); led++) {
+              const int8_t gang = gang_for_led(led);
+              if (gang >= 0) {
+                // An inactive gang is a dark break in the wave; its HA entity
+                // turning on replaces that break with a calm green marker.
+                it[led] = gang_on[gang] ? Color(0, 180, 24) : Color(0, 0, 3);
+                continue;
+              }
+
+              const float position = static_cast<float>(led) / static_cast<float>(it.size());
+              const float wave = 0.5f + 0.5f * sinf(position * two_pi - elapsed * 0.55f);
+              const uint8_t green = static_cast<uint8_t>((8.0f + 18.0f * wave) * breathing);
+              const uint8_t blue = static_cast<uint8_t>((55.0f + 95.0f * wave) * breathing);
+              it[led] = Color(0, green, blue);
+            }
       - addressable_rainbow:
           name: "Rainbow"
           width: ${LIGHT_LED_COUNT}
@@ -194,7 +304,43 @@ light:
         to: ${26 if IS_EU_MODEL else 30}
         reversed: false
 
+switch:
+  - id: sw_status_wave_enabled
+    name: Status wave
+    platform: template
+    icon: mdi:waves
+    entity_category: config
+    internal: false
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - light.turn_on:
+          id: lights_all
+          brightness: ${STATUS_WAVE_DEFAULT_BRIGHTNESS}%
+          effect: "${STATUS_WAVE_EFFECT_NAME}"
+    turn_off_action:
+      - light.turn_off:
+          id: lights_all
+          transition_length: 0s
+      - lambda: |-
+          #ifdef TX_ULTIMATE_EASY_HW_RELAYS
+          show_relay_status->execute();
+          #endif
+
 script:
+  - id: !extend boot_done
+    then:
+      # The restored switch state is available by boot_done. Starting the effect
+      # here also enables it after upgrading from firmware that did not have it.
+      - if:
+          condition:
+            - switch.is_on: sw_status_wave_enabled
+          then:
+            - light.turn_on:
+                id: lights_all
+                brightness: ${STATUS_WAVE_DEFAULT_BRIGHTNESS}%
+                effect: "${STATUS_WAVE_EFFECT_NAME}"
+
   - id: !extend dump_config
     then:
       - lambda: |-

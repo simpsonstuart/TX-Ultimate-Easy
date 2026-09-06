@@ -158,6 +158,32 @@ For more details, please refer to our **[Events docs](docs/events.md)**.
 #### Automation
 All device behaviors can be customized through Home Assistant automations without relying on local device triggers.
 
+### Calm Blue Status Wave
+
+The **Status wave** switch is enabled by default. It runs a slow blue wave
+around the panel and reserves one dark notch for each gang. A notch turns green
+when the Home Assistant entity mapped to that gang is on. These indicators
+follow the virtual lights or switches controlled by the buttons, rather than
+the physical relays.
+
+Map the controlled entities in the device configuration and re-flash:
+
+```yaml
+substitutions:
+  gang_1_status_entity: light.kitchen_ceiling
+  gang_2_status_entity: light.kitchen_cabinets
+  gang_3_status_entity: switch.porch_lights
+```
+
+Only mappings up to the configured `gang_count` are displayed. The defaults
+are placeholder `input_boolean.tx_ultimate_easy_gang_N_status` entity IDs, so
+unconfigured notches remain off. The source entities must have normal `on` and
+`off` states. Set each **Button N action** to **None** when its physical relay
+should remain continuously powered.
+
+Turning **Status wave** off restores the existing physical-relay LED indicator
+behavior. Night Mode still takes priority over both displays.
+
 ### Night Mode
 
 Night Mode freezes the LEDs at a fixed color and brightness and, optionally,
