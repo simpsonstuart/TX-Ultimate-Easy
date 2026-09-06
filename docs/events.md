@@ -1,17 +1,59 @@
-# Updating the Event Engine in TX Ultimate Easy
+# Using TX Ultimate Easy Events
 
 ## Overview of the Event System
 
-The TX Ultimate Easy firmware introduces a powerful
-and flexible event system designed to handle various types of interactions,
-such as touch gestures and device states.
-This system leverages Home Assistant's native event structure,
-ensuring seamless integration and enabling users to create advanced automations.
+TX Ultimate Easy publishes each physical button as a native Home Assistant
+event entity. Use these entities for new button automations. Native event
+entities use the regular ESPHome entity connection, do not require permission
+for the device to perform Home Assistant actions, and are not represented by a
+short on/off state.
 
-### Event Structure
+The firmware also continues to emit the legacy `esphome.tx_ultimate_easy`
+event-bus event for existing automations and for touch gestures that do not yet
+have their own event entity.
+
+### Native Button Event Entities (Recommended)
+
+Each configured gang exposes one entity:
+
+- `Button 1 event`
+- `Button 2 event`
+- `Button 3 event`
+- `Button 4 event`
+
+The supported event types are `click`, `double_click`, `long_press`, and
+`multiple_click`. In Home Assistant's automation editor, select **Event
+received**, choose the button event entity, and select `click` as the event
+type.
+
+For example, this automation toggles a Zigbee light while leaving the TX
+Ultimate relay alone:
+
+```yaml
+triggers:
+  - trigger: event.received
+    target:
+      entity_id: event.living_room_switch_button_1_event
+    options:
+      event_type:
+        - click
+actions:
+  - action: light.toggle
+    target:
+      entity_id: light.living_room
+```
+
+Replace both entity IDs with the IDs from your Home Assistant instance. Set
+**Button 1 action** to **None** on the TX Ultimate device when the physical
+relay must remain on.
+
+### Legacy Event-Bus Structure
 
 All events emitted by the device are categorized under the `esphome.tx_ultimate_easy` event type in Home Assistant.
 The `data` field within the event payload provides details about the specific interaction.
+If you keep using this legacy route, open the ESPHome integration's
+configuration for the device and enable **Allow the device to perform Home
+Assistant actions**.
 Below is a detailed description of the keys used:
 
 #### Example Event Payload
@@ -66,7 +108,7 @@ Below is a detailed description of the keys used:
 
 - **Description**: Indicates the specific action or interaction.
 - **Examples**:
-  - For `type: button`: `click`, `double-click`, `long-press`, `multiple-click`
+  - For `type: button`: `click`, `double_click`, `long_press`, `multiple_click`
   - For `type: swipe`: `left`, `right`, `up`, `down`
 
 #### `button_id`
@@ -182,9 +224,9 @@ Below is a detailed description of the keys used:
     position: 3
 ```
 
-### Integration in Automations
+### Legacy Integration in Automations
 
-#### Listening to Events
+#### Listening to Legacy Events
 
 To utilize these events in Home Assistant, follow these steps:
 
@@ -194,7 +236,7 @@ To utilize these events in Home Assistant, follow these steps:
 4. Click "Start listening."
 5. Trigger interactions on your TX Ultimate Easy device to see the events in real-time.
 
-#### Example Automation YAML
+#### Legacy Automation YAML
 
 ##### Automation for a Single Click
 

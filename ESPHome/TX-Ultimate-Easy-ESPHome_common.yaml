@@ -30,6 +30,10 @@ substitutions:
 
 api:
   id: api_server
+  # Button entities publish short, back-to-back state changes. Sending them
+  # immediately prevents the API batcher from coalescing ON -> OFF into a
+  # single update before Home Assistant sees the press.
+  batch_delay: 0ms
   homeassistant_services: true
   on_client_connected:
     then:

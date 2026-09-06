@@ -61,7 +61,9 @@ namespace esphome {
       esphome::api::CustomAPIDevice ha_event;
       ha_event.fire_homeassistant_event("esphome.tx_ultimate_easy", data);
 
-      ESP_LOGV(TAG_COMPONENT_BASE, "HA event 'esphome.tx_ultimate_easy' sent successfully");
+      // The native API is asynchronous and cannot confirm that Home Assistant
+      // consumed this legacy event, so avoid reporting a false success here.
+      ESP_LOGV(TAG_COMPONENT_BASE, "HA event 'esphome.tx_ultimate_easy' submitted to the ESPHome API");
     }
 
   }  // namespace tx_ultimate_easy

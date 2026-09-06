@@ -136,7 +136,9 @@ device integration rather than implementing its own automation tools.
 
 ### Event-Based Automation
 
-TX Ultimate Easy uses Home Assistant's native Events system for reliable automation triggers.
+TX Ultimate Easy exposes a native event entity for each physical button, which
+is the recommended trigger for new Home Assistant automations. It also keeps
+emitting the legacy `esphome.tx_ultimate_easy` event for compatibility.
 While sensors show the current state (e.g., button pressed/not pressed),
 events capture-specific actions like clicks, swipes, and long-presses.
 

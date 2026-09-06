@@ -40,6 +40,54 @@ substitutions:
 
   TAG_HW_BUTTONS: tx_ultimate_easy.hw.buttons
 
+event:
+  # Native ESPHome event entities are the reliable, permission-free path for
+  # Home Assistant automations. The legacy esphome.tx_ultimate_easy bus event
+  # is still emitted by button_action below for backwards compatibility.
+  - id: ev_button_1
+    name: Button 1 event
+    platform: template
+    device_class: button
+    event_types:
+      - click
+      - double_click
+      - long_press
+      - multiple_click
+    internal: ${gang_count < 1}
+
+  - id: ev_button_2
+    name: Button 2 event
+    platform: template
+    device_class: button
+    event_types:
+      - click
+      - double_click
+      - long_press
+      - multiple_click
+    internal: ${gang_count < 2}
+
+  - id: ev_button_3
+    name: Button 3 event
+    platform: template
+    device_class: button
+    event_types:
+      - click
+      - double_click
+      - long_press
+      - multiple_click
+    internal: ${gang_count < 3}
+
+  - id: ev_button_4
+    name: Button 4 event
+    platform: template
+    device_class: button
+    event_types:
+      - click
+      - double_click
+      - long_press
+      - multiple_click
+    internal: ${gang_count < 4}
+
 binary_sensor:
   - id: bs_button_1
     name: Button 1
@@ -120,6 +168,27 @@ script:
       count: uint8_t
     then:
       - lambda: |-
+          // Publish through a native ESPHome event entity. Unlike a raw
+          // Home Assistant event-bus call, this uses the normal entity API
+          // subscription and does not require HA action-call permission.
+          switch (button) {
+            case ${BUTTON_1_ID}:
+              ev_button_1->trigger(action);
+              break;
+            case ${BUTTON_2_ID}:
+              ev_button_2->trigger(action);
+              break;
+            case ${BUTTON_3_ID}:
+              ev_button_3->trigger(action);
+              break;
+            case ${BUTTON_4_ID}:
+              ev_button_4->trigger(action);
+              break;
+            default:
+              ESP_LOGW("${TAG_HW_BUTTONS}", "Cannot publish event for invalid button %" PRIu8, button);
+              return;
+          }
+
           // Send event to Home Assistant
           esphome::tx_ultimate_easy::fire_ha_event("touch", "button", {
             {"action", action.c_str()},
